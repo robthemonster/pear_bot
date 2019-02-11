@@ -54,7 +54,6 @@ const TREES_FILE_NAME = "./trees.json";
 const PEAR_COUNTS_FILE_NAME = "./pear_counts.json";
 const Search = require('azure-cognitiveservices-imagesearch');
 const CognitiveServicesCredentials = require('ms-rest-azure').CognitiveServicesCredentials;
-const Houndify = require('houndify');
 const Discord = require('discord.js');
 let logger = require('winston');
 let auth = require('./auth.json');
@@ -73,9 +72,6 @@ const MS_PER_DAY = 8.64e+7;
 const PEAR_SEARCH_STRING = "pear";
 const SEARCH_MODIFIERS = ['bartlett', 'anime', 'art', 'cute', 'animal crossing', 'bear'];
 
-let houndify_key = auth.houndify_token;
-let houndify_id = auth.houndify_clientID;
-
 let bing_key = auth.bing_token;
 let bing_credentials = new CognitiveServicesCredentials(bing_key);
 let imageSearchApiClient = new Search.ImageSearchClient(bing_credentials);
@@ -88,8 +84,6 @@ const DAILY_REMINDER_MESSAGE = 'This is your daily reminder that Bartlett pears 
 const SUBSCRIBE_SUCCESS_MESSAGE = 'You\'ve subscribed to Bartlett pear reminders!';
 
 const TREE_HELPER_MESSAGE = "You can try \"!tree plant\", \"!tree water\", \"!tree harvest\", \"!tree status\" \"!tree count\" or \"!tree leader\"";
-
-const QUERY_HELPER_MESSAGE = "You can try \"!query\" followed by a question.";
 
 const PEAR_PROBABILITY = (1 / 720);
 
@@ -119,15 +113,49 @@ client.on('ready', () => {
     reminderTimeout = randomInt(0, MS_PER_DAY);
     logger.info("Initial reminderTimeout: " + reminderTimeout);
 
+    if (reminderTimeoutID !== -1) {
+        clearTimeout(reminderTimeoutID);
+    }
+    if (treeAgeIntervalID !== -1) {
+        clearTimeout(treeAgeIntervalID);
+    }
     reminderTimeoutID = setTimeout(sendOutReminders, reminderTimeout);
-    treeAgeIntervalID = setInterval(ageTreesByMinute, 60000);
+    treeAgeIntervalID = setTimeout(ageTreesByMinute, 60000);
 });
 client.on('disconnect', function (errMsg, code) {
     logger.info("Disconnected, trying to reconnect.");
-    clearInterval(treeAgeIntervalID);
+    clearTimeout(treeAgeIntervalID);
     clearTimeout(reminderTimeoutID);
     client.connect();
 });
+client.on('error', error => logger.info(error.toString()));
+client.on('message', message => {
+
+    let userID = message.author.id;
+    let channelID = message.channel.id;
+    let content = message.content;
+    if (content.substring(0, 1) === '!') {
+        let args = content.substring(1).split(' ');
+        let cmd = args[0];
+        args = args.splice(1);
+        switch (cmd) {
+            case 'subscribe':
+                subscribeToReminders(channelID);
+                break;
+            case 'pearme':
+                sendPearToChannel(channelID);
+                break;
+            case 'tree':
+                performTreeOps(channelID, userID, args[0]);
+                break;
+            case 'clean':
+                deleteMessagesFromChannel(channelID);
+                break;
+        }
+    }
+});
+
+const TREE_DEATH_TIMEOUT = 1440 + 60;
 
 function deleteMessagesFromChannel(channelID) {
     let channel = client.channels.get(channelID);
@@ -142,40 +170,8 @@ function deleteMessagesFromChannel(channelID) {
                 await channel.bulkDelete(mine, false);
             } while (fetched.size > 0)
         })();
-
     }
 }
-
-client.on('message', message => {
-
-    let userID = message.author.id;
-    let channelID = message.channel.id;
-    let content = message.content;
-    if (content.substring(0, 1) === '!') {
-        let args = content.substring(1).split(' ');
-        let cmd = args[0];
-        args = args.splice(1);
-        switch (cmd) {
-            case 'subscribe':
-                subscribeToReminders(channelID);
-                break;
-            case 'query':
-                let queryString = content.substring(content.indexOf(' '));
-                submitTextQueryToHoundify(queryString, channelID);
-                break;
-            case 'pearme':
-                sendPearToChannel(channelID);
-                break;
-            case 'tree':
-                performTreeOps(channelID, userID, args[0]);
-                break;
-            case 'clean':
-                deleteMessagesFromChannel(channelID);
-                break;
-        }
-    }
-});
-const TREE_DEATH_TIMEOUT = 1440 + 60;
 
 function ageTreesByMinute() {
     for (let userID in trees) {
@@ -192,6 +188,7 @@ function ageTreesByMinute() {
         }
     }
     writeObjectToFile(trees, TREES_FILE_NAME);
+    treeAgeIntervalID = setTimeout(ageTreesByMinute, 60000);
 }
 
 function sendMessageToChannel(channelID, message) {
@@ -229,38 +226,11 @@ function sendOutReminders() {
     reminderTimeoutID = setTimeout(sendOutReminders, reminderTimeout);
 }
 
-function sendQueryResponse(response, info, channelID) {
-    if (response.AllResults !== null) {
-        let result = response.AllResults[0];
-        let responseString = result.WrittenResponseLong;
-        sendMessageToChannel(channelID, responseString);
-    }
-}
-
-function submitTextQueryToHoundify(queryString, channelID) {
-    if (queryString === undefined) {
-        sendMessageToChannel(channelID, QUERY_HELPER_MESSAGE);
-        return;
-    }
-    let textRequest = new Houndify.TextRequest({
-        query: queryString,
-        clientId: houndify_id,
-        clientKey: houndify_key,
-        onResponse: function (response, info) {
-            sendQueryResponse(response, info, channelID);
-        },
-        onError: function (response, info) {
-            logger.info(response);
-        }
-    });
-}
-
 function sendPearToChannel(channelID) {
     let image = "./pear_pictures/" + pearImageList[randomInt(0, pearImageList.length - 1)];
     logger.info("Pear requested: " + image);
     client.channels.get(channelID).send({files: [image]});
 }
-
 
 function plantTree(channelID, userID) {
     if (trees[userID] !== undefined) {
