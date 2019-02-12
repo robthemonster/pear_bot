@@ -55,7 +55,7 @@ const PEAR_COUNTS_FILE_NAME = "./pear_counts.json";
 const Search = require('azure-cognitiveservices-imagesearch');
 const CognitiveServicesCredentials = require('ms-rest-azure').CognitiveServicesCredentials;
 const Discord = require('discord.js');
-let logger = require('winston');
+const {createLogger, format, transports } = require('winston');
 let auth = require('./auth.json');
 let fs = require('fs');
 let subscribedList = require(SUBSCRIBED_FILE_NAME);
@@ -93,11 +93,24 @@ for (let userID in treesJson) {
     trees[userID].parseJson(treesJson[userID]);
 }
 
-logger.remove(logger.transports.Console);
-logger.add(new logger.transports.Console, {
-    colorize: true
+const logger = createLogger({
+    format: format.combine(
+        format.timestamp(),
+        format.simple()
+    ),
+    transports: [
+        new transports.Console({
+            format: format.combine(
+                format.timestamp(),
+                format.colorize(),
+                format.simple()
+            )
+        }),
+        new transports.Stream({
+            stream: fs.createWriteStream('./pear_bot.log')
+        })
+    ]
 });
-logger.level = 'debug';
 
 let client = new Discord.Client();
 client.login(auth.token);

@@ -1,4 +1,5 @@
 *.json
+*.log
 createSet.js
 pear.jpg
 readSet.js
