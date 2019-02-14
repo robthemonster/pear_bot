@@ -105,9 +105,6 @@ const logger = createLogger({
                 format.colorize(),
                 format.simple()
             )
-        }),
-        new transports.Stream({
-            stream: fs.createWriteStream('./pear_bot.log')
         })
     ]
 });
