@@ -25,8 +25,8 @@ class PearTree {
             this.minutesThisDay = 0;
             this.ageInDays += 1;
         }
-        if (Math.random() < PEAR_PROBABILITY) {
-            this.pears += this.multiplier();
+        if (Math.random() < PEAR_PROBABILITY * this.multiplier()) {
+            this.pears += 1
         }
     }
 
