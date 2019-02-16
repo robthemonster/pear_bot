@@ -3,6 +3,7 @@
 class PearTree {
 
     constructor(plantedBy, channelPlantedIn) {
+        this.userID = plantedBy;
         this.ageInDays = 0;
         this.minutesThisDay = 0;
         this.minutesSinceWatered = 0;
@@ -10,12 +11,24 @@ class PearTree {
         this.channelPlantedIn = channelPlantedIn;
     }
 
-    parseJson(treeJson) {
-        this.ageInDays = treeJson.ageInDays;
-        this.minutesThisDay = treeJson.minutesThisDay;
-        this.minutesSinceWatered = treeJson.minutesSinceWatered;
-        this.pears = treeJson.pears;
-        this.channelPlantedIn = treeJson.channelPlantedIn;
+    parseItem(item) {
+        this.userID = item.userID.S;
+        this.ageInDays = parseInt(item.ageInDays.S);
+        this.minutesThisDay = parseInt(item.minutesThisDay.S);
+        this.minutesSinceWatered = parseInt(item.minutesSinceWatered.S);
+        this.channelPlantedIn = item.channelPlantedIn.S;
+        this.pears = parseInt(item.pears.S);
+    }
+
+    toItem() {
+        return {
+            userID: {'S': this.userID.toString()},
+            ageInDays: {'S': this.ageInDays.toString()},
+            minutesThisDay: {'S': this.minutesThisDay.toString()},
+            minutesSinceWatered: {'S': this.minutesSinceWatered.toString()},
+            pears: {'S': this.pears.toString()},
+            channelPlantedIn: {'S': this.channelPlantedIn.toString()}
+        };
     }
 
     ageByAMinute() {
@@ -49,20 +62,22 @@ function randomInt(min, max) {
     return min + Math.floor(Math.random() * (max - min));
 }
 
-const SUBSCRIBED_FILE_NAME = "./subscribed.json";
-const TREES_FILE_NAME = "./trees.json";
-const PEAR_COUNTS_FILE_NAME = "./pear_counts.json";
+const MS_PER_MINUTE = 60000;
 const Search = require('azure-cognitiveservices-imagesearch');
 const CognitiveServicesCredentials = require('ms-rest-azure').CognitiveServicesCredentials;
 const Discord = require('discord.js');
-const {createLogger, format, transports } = require('winston');
+const {createLogger, format, transports} = require('winston');
 let auth = require('./auth.json');
 let fs = require('fs');
-let subscribedList = require(SUBSCRIBED_FILE_NAME);
+let aws = require('aws-sdk');
+aws.config.update({region: 'us-east-2'});
+let db = new aws.DynamoDB({apiVersion: '2019-02-16'});
+const TREE_TABLE_NAME = 'trees';
+const SUBSCRIPTIONS_TABLE_NAME = 'subscriptions';
+const PEAR_COUNTS_TABLE_NAME = 'pear_counts';
 let subscribed = new Set();
-let treesJson = require(TREES_FILE_NAME);
 let trees = {};
-let pearCounts = require(PEAR_COUNTS_FILE_NAME);
+let pearCounts = [];
 
 let reminderTimeout = -1;
 
@@ -78,20 +93,13 @@ let imageSearchApiClient = new Search.ImageSearchClient(bing_credentials);
 
 const ALREADY_SUBSCRIBED_MESSAGE = 'This channel is already subscribed to Bartlett pear reminders! I appreciate your' +
     ' enthusiasm for the almighty pear.';
-
 const DAILY_REMINDER_MESSAGE = 'This is your daily reminder that Bartlett pears are amazing.';
-
 const SUBSCRIBE_SUCCESS_MESSAGE = 'You\'ve subscribed to Bartlett pear reminders!';
-
 const TREE_HELPER_MESSAGE = "You can try \"!tree plant\", \"!tree water\", \"!tree harvest\", \"!tree status\" \"!tree count\" or \"!tree leader\"";
+const NOT_SUBSCRIBED_MESSAGE = "This channel is not currently subscribed to Barlett Pear Reminders!";
+const UNSUBSCRIBED_MESSAGE = "Unsubscribed. (This action has been recorded...)";
 
 const PEAR_PROBABILITY = (1 / 720);
-
-subscribedList.forEach(channelId => subscribed.add(channelId));
-for (let userID in treesJson) {
-    trees[userID] = new PearTree();
-    trees[userID].parseJson(treesJson[userID]);
-}
 
 const logger = createLogger({
     format: format.combine(
@@ -109,11 +117,66 @@ const logger = createLogger({
     ]
 });
 
+async function scanFromTable(tableName) {
+    let result = null;
+    await db.scan({TableName: tableName},
+        (error, data) => {
+            if (error) {
+                logger.info(error);
+            } else {
+                result = data;
+            }
+        }).promise().catch(error => logger.info(error));
+    return result;
+}
+
+async function putIntoTable(tableName, item) {
+    let response = null;
+    await db.putItem({TableName: tableName, Item: item}, (error, data) => {
+        if (error) {
+            logger.info(error);
+        } else {
+            response = data;
+        }
+    }).promise().catch(error => logger.info(error));
+    return response;
+}
+
+
+async function deleteItemFromTable(tableName, key) {
+    let result = null;
+    await db.deleteItem({TableName: tableName, Key: key}, (error, data) => {
+        if (error) {
+            logger.info(error);
+        } else {
+            result = data;
+        }
+    }).promise().catch(error => logger.info(error));
+    return result;
+}
+
 let client = new Discord.Client();
-client.login(auth.token);
 
 let treeAgeIntervalID = -1;
 let reminderTimeoutID = -1;
+
+scanFromTable(SUBSCRIPTIONS_TABLE_NAME)
+    .then(results => {
+        results.Items.forEach(result => subscribed.add(result.channelID.S));
+        scanFromTable(TREE_TABLE_NAME).then(results => {
+            results.Items.forEach(result => {
+                let tree = new PearTree();
+                tree.parseItem(result);
+                trees[tree.userID] = tree;
+            });
+            logger.info("Initiated trees size:" + Object.keys(trees).length);
+            scanFromTable(PEAR_COUNTS_TABLE_NAME).then(results => {
+                results.Items.forEach(result => pearCounts[result.userID.S] = parseInt(result.pearsHarvested.N));
+                client.login(auth.token);
+            })
+        });
+    });
+
 client.on('ready', () => {
     logger.info('Connected,');
     logger.info('Logged in as: ');
@@ -130,7 +193,7 @@ client.on('ready', () => {
         clearTimeout(treeAgeIntervalID);
     }
     reminderTimeoutID = setTimeout(sendOutReminders, reminderTimeout);
-    treeAgeIntervalID = setTimeout(ageTreesByMinute, 60000);
+    treeAgeIntervalID = setTimeout(ageTreesByMinute, MS_PER_MINUTE);
 });
 client.on('disconnect', function (errMsg, code) {
     logger.info("Disconnected, trying to reconnect.");
@@ -139,6 +202,7 @@ client.on('disconnect', function (errMsg, code) {
     client.connect();
 });
 client.on('error', error => logger.info(error.toString()));
+
 client.on('message', message => {
 
     let userID = message.author.id;
@@ -149,6 +213,9 @@ client.on('message', message => {
         let cmd = args[0];
         args = args.splice(1);
         switch (cmd) {
+            case 'unsubscribe':
+                unsubscribeFromReminders(channelID);
+                break;
             case 'subscribe':
                 subscribeToReminders(channelID);
                 break;
@@ -187,6 +254,7 @@ function ageTreesByMinute() {
     for (let userID in trees) {
         let tree = trees[userID];
         tree.ageByAMinute();
+        putIntoTable(TREE_TABLE_NAME, tree.toItem());
         if (tree.minutesSinceWatered === TREE_DEATH_TIMEOUT - (3 * 60)) {
             let channel = tree.channelPlantedIn;
             sendMessageToChannel(channel, "<@" + userID + ">'s pear tree is withering. It needs water soon!");
@@ -194,11 +262,11 @@ function ageTreesByMinute() {
         if (tree.minutesSinceWatered >= TREE_DEATH_TIMEOUT) {
             let channel = tree.channelPlantedIn;
             delete trees[userID];
+            deleteItemFromTable(TREE_TABLE_NAME, {userID: {'S': userID}});
             sendMessageToChannel(channel, "The tree planted by " + getUsername(userID) + " has died!");
         }
     }
-    writeObjectToFile(trees, TREES_FILE_NAME);
-    treeAgeIntervalID = setTimeout(ageTreesByMinute, 60000);
+    treeAgeIntervalID = setTimeout(ageTreesByMinute, MS_PER_MINUTE);
 }
 
 function sendMessageToChannel(channelID, message) {
@@ -246,7 +314,8 @@ function plantTree(channelID, userID) {
     if (trees[userID] !== undefined) {
         sendMessageToChannel(channelID, "You already have a tree planted!");
     } else {
-        trees[userID] = new PearTree(getUsername(userID), channelID);
+        trees[userID] = new PearTree(userID, channelID);
+        putIntoTable(TREE_TABLE_NAME, trees[userID].toItem());
         sendMessageToChannel(channelID, getUsername(userID) + " planted a pear tree! Don't forget to"
             + " water it once a day.");
     }
@@ -261,6 +330,7 @@ function waterTree(channelID, userID) {
         sendMessageToChannel(channelID, "You watered your tree!");
         tree.water();
         tree.channelPlantedIn = channelID;
+        putIntoTable(TREE_TABLE_NAME, tree.toItem());
     } else {
         sendMessageToChannel(channelID, "You don't have a tree to water! Try \"!tree plant\"");
     }
@@ -271,7 +341,7 @@ function addPearsToCount(userID, pearsHarvested) {
         pearCounts[userID] = 0;
     }
     pearCounts[userID] += pearsHarvested;
-    writeObjectToFile(pearCounts, PEAR_COUNTS_FILE_NAME);
+    putIntoTable(PEAR_COUNTS_TABLE_NAME, getPearCountItem(userID));
 }
 
 function getUsername(userID) {
@@ -287,6 +357,7 @@ function harvestTree(channelID, userID) {
         let pearsHarvested = tree.harvest();
         tree.channelPlantedIn = channelID;
         addPearsToCount(userID, pearsHarvested);
+        putIntoTable(TREE_TABLE_NAME, tree.toItem());
         sendMessageToChannel(channelID, getUsername(userID) + " harvested " + pearsHarvested + " pears!\n"
             + getUsername(userID) + ": " + (pearCounts[userID] - pearsHarvested) + " + " + pearsHarvested + " = "
             + pearCounts[userID])
@@ -315,10 +386,14 @@ function sendTreeStatus(channelID, userID) {
     }
 }
 
+function getPearCountItem(userID) {
+    return {userID: {'S': userID.toString()}, pearsHarvested: {'N': pearCounts[userID].toString()}}
+}
+
 function sendPearCount(channelID, userID) {
     if (pearCounts[userID] === undefined) {
         pearCounts[userID] = 0;
-        writeObjectToFile(pearCounts, PEAR_COUNTS_FILE_NAME);
+        putIntoTable(PEAR_COUNTS_TABLE_NAME, getPearCountItem(userID));
     }
     sendMessageToChannel(channelID, getUsername(userID) + ": " + pearCounts[userID]);
 }
@@ -344,15 +419,12 @@ function performTreeOps(channelID, userID, subfunction) {
     switch (subfunction) {
         case "plant":
             plantTree(channelID, userID);
-            writeObjectToFile(trees, TREES_FILE_NAME);
             break;
         case "water":
             waterTree(channelID, userID);
-            writeObjectToFile(trees, TREES_FILE_NAME);
             break;
         case "harvest":
             harvestTree(channelID, userID);
-            writeObjectToFile(trees, TREES_FILE_NAME);
             break;
         case "status":
             sendTreeStatus(channelID, userID);
@@ -369,24 +441,26 @@ function performTreeOps(channelID, userID, subfunction) {
     }
 }
 
-function writeObjectToFile(object, fileName) {
-    fs.writeFile(fileName, JSON.stringify(object), function (err) {
-        if (err) {
-            logger.info(err.message);
-            throw err;
-        }
-    });
-    logger.info("Wrote to " + fileName);
+function unsubscribeFromReminders(channelID) {
+    if (!subscribed.has(channelID)) {
+        sendMessageToChannel(channelID, NOT_SUBSCRIBED_MESSAGE);
+        return;
+    }
+    subscribed.delete(channelID);
+    sendMessageToChannel(channelID, UNSUBSCRIBED_MESSAGE);
+    logger.info("Unsubscribed size: " + subscribed.size);
+    deleteItemFromTable(SUBSCRIPTIONS_TABLE_NAME, {channelID: {'S': channelID.toString()}});
 }
+
 
 function subscribeToReminders(channelID) {
     if (subscribed.has(channelID)) {
         sendMessageToChannel(channelID, ALREADY_SUBSCRIBED_MESSAGE);
         return;
     }
+    let item = {channelID: {'S': channelID}};
+    putIntoTable(SUBSCRIPTIONS_TABLE_NAME, item).then(result => logger.info(result.toString()));
     subscribed.add(channelID);
-    subscribedList = Array.from(subscribed);
-    writeObjectToFile(subscribedList, SUBSCRIBED_FILE_NAME);
     logger.info('Subscribed size: ' + subscribed.size);
     sendMessageToChannel(channelID, SUBSCRIBE_SUCCESS_MESSAGE);
 }
