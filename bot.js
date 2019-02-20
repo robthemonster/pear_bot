@@ -209,7 +209,7 @@ function playRossInChannel(voiceChannel) {
         return;
     }
     voiceChannel.join().then(connection => {
-        connection.playFile(I_EAT_PEARS_MP3).on('end', () => {voiceChannel.leave();});
+        connection.playFile(I_EAT_PEARS_MP3).on('end', () => {setTimeout(() => {voiceChannel.leave()}, 2000);});
     }).catch(console.error);
 }
 
