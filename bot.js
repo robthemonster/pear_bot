@@ -61,7 +61,6 @@ class PearTree {
 function randomInt(min, max) {
     return min + Math.floor(Math.random() * (max - min));
 }
-
 const MS_PER_MINUTE = 60000;
 const Search = require('azure-cognitiveservices-imagesearch');
 const CognitiveServicesCredentials = require('ms-rest-azure').CognitiveServicesCredentials;
@@ -78,6 +77,8 @@ const PEAR_COUNTS_TABLE_NAME = 'pear_counts';
 let subscribed = new Set();
 let trees = {};
 let pearCounts = [];
+
+const I_EAT_PEARS_MP3 = "./pears.mp3";
 
 let reminderTimeout = -1;
 
@@ -203,6 +204,15 @@ client.on('disconnect', function (errMsg, code) {
 });
 client.on('error', error => logger.info(error.toString()));
 
+function playRossInChannel(voiceChannel) {
+    if (voiceChannel === undefined) {
+        return;
+    }
+    voiceChannel.join().then(connection => {
+        connection.playFile(I_EAT_PEARS_MP3).on('end', () => {voiceChannel.leave();});
+    }).catch(console.error);
+}
+
 client.on('message', message => {
 
     let userID = message.author.id;
@@ -227,6 +237,9 @@ client.on('message', message => {
                 break;
             case 'clean':
                 deleteMessagesFromChannel(channelID);
+                break;
+            case 'eatpears':
+                playRossInChannel(message.member.voiceChannel);
                 break;
         }
     }
@@ -296,7 +309,7 @@ function sendOutReminders() {
                 sendMessageToChannel(channelID, DAILY_REMINDER_MESSAGE);
             });
             logger.info("Image search fail");
-            logger.info(err.toString())
+            logger.info(err.toString());
         });
     }
     reminderTimeout = randomInt(0, MS_PER_DAY * 2);
