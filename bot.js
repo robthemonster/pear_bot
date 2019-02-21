@@ -254,19 +254,7 @@ client.on('message', message => {
 const TREE_DEATH_TIMEOUT = 1440 + 60;
 
 function deleteMessagesFromChannel(channelID) {
-    let channel = client.channels.get(channelID);
-    if (channel !== undefined) {
-        (async () => {
-            let fetched;
-            let last = channel.lastMessageID;
-            do {
-                fetched = await channel.fetchMessages({limit: 100, before: last});
-                let mine = fetched.filter(message => message.author.id === client.user.id);
-                last = fetched.lastKey();
-                await channel.bulkDelete(mine, false);
-            } while (fetched.size > 0)
-        })();
-    }
+    //TODO: Update this function to utilize discordjs 12
 }
 
 function ageTreesByMinute() {
