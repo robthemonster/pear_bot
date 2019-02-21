@@ -61,6 +61,7 @@ class PearTree {
 function randomInt(min, max) {
     return min + Math.floor(Math.random() * (max - min));
 }
+
 const MS_PER_MINUTE = 60000;
 const Search = require('azure-cognitiveservices-imagesearch');
 const CognitiveServicesCredentials = require('ms-rest-azure').CognitiveServicesCredentials;
@@ -209,7 +210,11 @@ function playRossInChannel(voiceChannel) {
         return;
     }
     voiceChannel.join().then(connection => {
-        connection.playFile(I_EAT_PEARS_MP3).on('end', () => {setTimeout(() => {voiceChannel.leave()}, 2000);});
+        connection.play(I_EAT_PEARS_MP3).on('end', () => {
+            setTimeout(() => {
+                voiceChannel.leave()
+            }, 2000);
+        });
     }).catch(console.error);
 }
 
@@ -218,6 +223,7 @@ client.on('message', message => {
     let userID = message.author.id;
     let channelID = message.channel.id;
     let content = message.content;
+    logger.info(content);
     if (content.substring(0, 1) === '!') {
         let args = content.substring(1).split(' ');
         let cmd = args[0];
@@ -239,7 +245,7 @@ client.on('message', message => {
                 deleteMessagesFromChannel(channelID);
                 break;
             case 'eatpears':
-                playRossInChannel(message.member.voiceChannel);
+                playRossInChannel(message.member.voice.channel);
                 break;
         }
     }
