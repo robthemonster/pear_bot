@@ -206,7 +206,7 @@ client.on('disconnect', function (errMsg, code) {
 client.on('error', error => logger.info(error.toString()));
 
 function playRossInChannel(voiceChannel) {
-    if (voiceChannel === undefined) {
+    if (voiceChannel === undefined || voiceChannel === null) {
         return;
     }
     voiceChannel.join().then(connection => {
@@ -223,7 +223,6 @@ client.on('message', message => {
     let userID = message.author.id;
     let channelID = message.channel.id;
     let content = message.content;
-    logger.info(content);
     if (content.substring(0, 1) === '!') {
         let args = content.substring(1).split(' ');
         let cmd = args[0];
