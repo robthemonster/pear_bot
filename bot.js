@@ -80,6 +80,7 @@ let trees = {};
 let pearCounts = [];
 
 const I_EAT_PEARS_MP3 = "./pears.mp3";
+const SHOUTOUT_MP3 = "./shoutout.mp3";
 
 let reminderTimeout = -1;
 
@@ -144,7 +145,6 @@ async function putIntoTable(tableName, item) {
     return response;
 }
 
-
 async function deleteItemFromTable(tableName, key) {
     let result = null;
     await db.deleteItem({TableName: tableName, Key: key}, (error, data) => {
@@ -205,12 +205,12 @@ client.on('disconnect', function (errMsg, code) {
 });
 client.on('error', error => logger.info(error.toString()));
 
-function playRossInChannel(voiceChannel) {
+function playFileInVoiceChannel(filename, voiceChannel) {
     if (voiceChannel === undefined || voiceChannel === null) {
         return;
     }
     voiceChannel.join().then(connection => {
-        connection.play(I_EAT_PEARS_MP3).on('end', () => {
+        connection.play(filename).on('end', () => {
             setTimeout(() => {
                 voiceChannel.leave()
             }, 2000);
@@ -244,7 +244,10 @@ client.on('message', message => {
                 deleteMessagesFromChannel(channelID);
                 break;
             case 'eatpears':
-                playRossInChannel(message.member.voice.channel);
+                playFileInVoiceChannel(I_EAT_PEARS_MP3, message.member.voice.channel);
+                break;
+            case 'shoutout':
+                playFileInVoiceChannel(SHOUTOUT_MP3, message.member.voice.channel);
                 break;
         }
     }
@@ -457,7 +460,6 @@ function unsubscribeFromReminders(channelID) {
     logger.info("Unsubscribed size: " + subscribed.size);
     deleteItemFromTable(SUBSCRIPTIONS_TABLE_NAME, {channelID: {'S': channelID.toString()}});
 }
-
 
 function subscribeToReminders(channelID) {
     if (subscribed.has(channelID)) {
