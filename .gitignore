@@ -1,2 +1,4 @@
 auth.json
 pear_pictures
+node_modules/*
+.idea/*
