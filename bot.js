@@ -23,7 +23,7 @@ function playFileInVoiceChannel(filename, voiceChannel) {
         return;
     }
     voiceChannel.join().then(connection => {
-        connection.playFile(filename).on('end', () => {
+        connection.play(filename).on('end', () => {
             setTimeout(() => {
                 voiceChannel.leave()
             }, 2000);
@@ -38,10 +38,10 @@ client.on('message', message => {
         let cmd = args[0];
         switch (cmd) {
             case 'eatpears':
-                playFileInVoiceChannel(I_EAT_PEARS_MP3, message.member.voiceChannel);
+                playFileInVoiceChannel(I_EAT_PEARS_MP3, message.member.voice.channel);
                 break;
             case 'shoutout':
-                playFileInVoiceChannel(SHOUTOUT_MP3, message.member.voiceChannel);
+                playFileInVoiceChannel(SHOUTOUT_MP3, message.member.voice.channel);
                 break;
         }
     }

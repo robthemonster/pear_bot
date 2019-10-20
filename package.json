@@ -5,8 +5,16 @@
   "main": "bot.js",
   "author": "Rob Levin, robthemonsterlevin@gmail.com",
   "dependencies": {
-    "discord.js": "11.5.1",
-    "ffmpeg": "0.0.4",
-    "node-opus": "^0.3.1"
+    "node-opus": "^0.3.1",
+    "@discordjs/uws": "^11.149.1",
+    "bufferutil": "^4.0.1",
+    "erlpack": "^0.1.2",
+    "libsodium-wrappers": "^0.7.5",
+    "sodium": "^3.0.2",
+    "zlib-sync": "^0.1.5",
+    "zucc": "^0.1.2",
+    "ffmpeg-static": "^2.7.0",
+    "opusscript": "^0.0.7",
+    "discord.js": "discordjs/discord.js#master"
   }
 }
