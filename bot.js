@@ -5,6 +5,7 @@ let auth = require('./auth.json');
 
 const I_EAT_PEARS_MP3 = "./pears.mp3";
 const SHOUTOUT_MP3 = "./shoutout.mp3";
+const THINK_ABOUT_IT_MP3 = "./think_about_it.mp3";
 
 let client = new Discord.Client();
 client.on('ready', () => {
@@ -42,6 +43,9 @@ client.on('message', message => {
                 break;
             case 'shoutout':
                 playFileInVoiceChannel(SHOUTOUT_MP3, message.member.voice.channel);
+                break;
+            case 'thinkaboutit':
+                playFileInVoiceChannel(THINK_ABOUT_IT_MP3, message.member.voice.channel);
                 break;
         }
     }
